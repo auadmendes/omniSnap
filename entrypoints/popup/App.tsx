@@ -7,28 +7,38 @@ function App() {
   const [timerAtivo, setTimerAtivo] = useState<number | null>(null);
   const [itensColetados, setItensColetados] = useState<number>(0);
 
+  // Função isolada para buscar o total atualizado da página de forma confiável
+  const sincronizarQuantidadeColetada = async (tabId: number) => {
+    try {
+      const response = await browser.tabs.sendMessage(tabId, { action: "TOTAL_ACUMULADO" });
+      if (response && typeof response.dados === 'number') {
+        setItensColetados(response.dados);
+      }
+    } catch (e) {
+      console.warn("[OmniSnap Popup] Script de conteúdo ainda não respondeu ao contador.");
+    }
+  };
+
   useEffect(() => {
     const carregarDadosAba = async () => {
       try {
         const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
         if (!tab?.url || !tab?.id) return;
 
-        // 1. Carrega o estado do Timer
+        // 1. Carrega o estado persistente do Timer
         const urlLimpo = new URL(tab.url).hostname;
         const resultado = await browser.storage.local.get(urlLimpo);
         if (resultado[urlLimpo]) {
           setTimerAtivo(resultado[urlLimpo] as number);
         }
 
-        // 2. Carrega a quantidade de itens já acumulados na página
-        const response = await browser.tabs.sendMessage(tab.id, { action: "TOTAL_ACUMULADO" });
-        if (response && typeof response.dados === 'number') {
-          setItensColetados(response.dados);
-        }
+        // 2. Executa a sincronização instantânea do acumulador
+        await sincronizarQuantidadeColetada(tab.id);
       } catch (e) {
         console.error(e);
       }
     };
+
     carregarDadosAba();
   }, []);
 
@@ -42,7 +52,7 @@ function App() {
       if (acao === "PEGAR_TEXTOS_ACUMULADOS") {
         if (response?.dados) {
           await navigator.clipboard.writeText(response.dados);
-          alert("Todos os blocos foram copiados juntos com sucesso!");
+          alert("Todos os blocks foram copiados juntos com sucesso!");
         } else {
           alert("Nenhum texto acumulado nesta página.");
         }
@@ -52,6 +62,9 @@ function App() {
         setItensColetados(0);
         alert("Lista de cópia limpa.");
       }
+
+      // CORREÇÃO: Após qualquer clique, força o re-check do contador para atualizar o layout do React
+      await sincronizarQuantidadeColetada(tab.id);
     } catch (e) {
       alert("Erro: Recarregue a página (F5) para ativar o script.");
     }
@@ -99,7 +112,13 @@ function App() {
     }
   };
 
-return (
+  const abrirPaginaOpcoes = () => {
+    browser.tabs.create({
+      url: browser.runtime.getURL('/options.html')
+    });
+  };
+
+  return (
     <div className="w-[350px] p-4 bg-slate-900 text-slate-100 font-sans antialiased flex flex-col gap-4">
       {/* Header */}
       <header className="border-b border-slate-800 pb-2">
@@ -177,27 +196,28 @@ return (
         </h2>
         <div className="flex flex-col gap-2">
           <div className="text-[11px] text-slate-400 leading-relaxed bg-slate-950/40 p-2 rounded-lg border border-slate-800/60">
-            💡 Segure a tecla <kbd className="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded-sm border border-slate-700 text-[10px] font-mono shadow-xs">Ctrl</kbd> na página enquanto seleciona os blocos com o mouse para acumulá-los.
+            💡 Segure a tecla <kbd className="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded-sm border border-slate-700 text-[10px] font-mono shadow-xs">Ctrl</kbd> na página enquanto seleciona os blocks com o mouse para acumulá-los.
           </div>
 
+          {/* MELHORIA: O botão agora destrava visualmente na mesma hora se houver mais que 0 itens */}
           <button 
             className={`w-full p-2.5 border rounded-xl flex items-center gap-3 text-left transition-all cursor-pointer group ${
               itensColetados > 0 
-                ? 'bg-slate-800/60 border-indigo-500/50 hover:border-indigo-500 shadow-md shadow-indigo-500/5' 
-                : 'bg-slate-800/20 border-slate-800 opacity-60 pointer-events-none'
+                ? 'bg-slate-800/80 border-indigo-500 text-white shadow-md shadow-indigo-500/10 hover:bg-slate-800' 
+                : 'bg-slate-800/20 border-slate-800 opacity-40 pointer-events-none'
             }`} 
             onClick={() => gerenciarAcumulador("PEGAR_TEXTOS_ACUMULADOS")}
           >
             <span className="text-lg bg-slate-950 p-1.5 rounded-lg group-hover:scale-105 transition-transform">📋</span>
             <div className="flex flex-col">
-              <span className="text-xs font-semibold text-slate-200 group-hover:text-indigo-400 transition-colors">Copiar Tudo Coletado</span>
-              <span className="text-[10px] text-slate-500">Junta os blocos salvos via Ctrl</span>
+              <span className={`text-xs font-semibold ${itensColetados > 0 ? 'text-indigo-400' : 'text-slate-400'}`}>Copiar Tudo Coletado</span>
+              <span className="text-[10px] text-slate-500">Junta os blocks salvos via Ctrl</span>
             </div>
           </button>
 
           {itensColetados > 0 && (
             <button 
-              className="w-full mt-1 py-1.5 bg-transparent border border-dashed border-red-500/30 hover:border-red-500 text-[11px] font-semibold text-red-400 hover:bg-red-500/5 rounded-lg transition-all cursor-pointer" 
+              className="w-full mt-1 py-1.5 bg-transparent border border-dashed border-red-500/30 hover:border-red-500 text-[11px] font-semibold text-red-400 hover:bg-red-500/5 **update-fade** rounded-lg transition-all cursor-pointer" 
               onClick={() => gerenciarAcumulador("LIMPAR_ACUMULADOR")}
             >
               Limpar Lista e Highlights
@@ -221,6 +241,16 @@ return (
             </div>
           </button>
         </div>
+      </section>
+
+      {/* Seção: Painel de Controle */}
+      <section className="flex flex-col gap-2 mt-1 border-t border-slate-800/60 pt-3">
+        <button 
+          className="w-full p-2 bg-slate-950 hover:bg-slate-950/40 border border-slate-800 hover:border-indigo-500/30 text-xs font-semibold text-slate-400 hover:text-indigo-400 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer" 
+          onClick={abrirPaginaOpcoes}
+        >
+          <span>⚙️</span> Gerenciar Meus Snippets
+        </button>
       </section>
     </div>
   );

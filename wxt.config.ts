@@ -25,6 +25,7 @@
 
 
 
+
 // wxt.config.ts
 import { defineConfig } from 'wxt';
 import react from '@vitejs/plugin-react';
@@ -35,12 +36,23 @@ export default defineConfig({
     plugins: [react()],
   }),
 
-  // CORREÇÃO: Informações do manifesto ficam agrupadas aqui dentro
+  // Informações do manifesto ficam agrupadas aqui dentro
   manifest: {
     name: 'OmniSnap',
     version: '1.0.0',
     description: 'Sua extensão moderna de produtividade OmniSnap',
     permissions: ['storage', 'activeTab', 'clipboardWrite'],
+
+    // ADICIONADO: Configuração nativa de comandos globais do navegador
+    commands: {
+      "abrir-busca-customizada": {
+        suggested_key: {
+          default: "Ctrl+Shift+F",
+          mac: "MacCtrl+Shift+F"
+        },
+        description: "Abre a barra de busca moderna do OmniSnap"
+      }
+    }
   }
 });
 

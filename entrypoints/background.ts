@@ -3,6 +3,23 @@
 export default defineBackground(() => {
   console.log('Hello background!', { id: browser.runtime.id });
 
+  browser.commands.onCommand.addListener(async (command) => {
+    if (command === "abrir-busca-customizada") {
+      try {
+        // Pega a aba que o usuário está olhando no momento
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+        
+        if (tab?.id) {
+          // Envia a mensagem direta para o content script daquela aba
+          browser.tabs.sendMessage(tab.id, { action: "ABRIR_BUSCA_ATALHO" });
+          console.log(`🚀 [OmniSnap] Comando enviado para a aba ${tab.id}`);
+        }
+      } catch (error) {
+        console.error("❌ [OmniSnap] Erro ao disparar comando para a aba:", error);
+      }
+    }
+  });
+  
   browser.runtime.onMessage.addListener((message, sender) => {
     if (message.action === "UPDATE_BADGE" && sender.tab?.id) {
       const tabId = sender.tab.id;
@@ -31,5 +48,6 @@ export default defineBackground(() => {
         tabId: tabId
       });
     }
+    
   });
 });
