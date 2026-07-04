@@ -5,44 +5,58 @@ import { initGmailMonitor } from '@/utils/gmailMonitor';
 import { openCustomSearch } from '@/utils/finderHandler';
 import { iniciarMonitorSalesforce } from '@/utils/salesforce';
 import { verificarEAcumularSelecao, limparAcumulador, obtenerQuantidadeItens, obtenerTextosJuntos } from '@/utils/selectionAccumulator';
+import { inicializarSidebarExpansivel } from '@/utils/sidebarDrawer';
 
 export default defineContentScript({
-  // CORREÇÃO: Força o casamento com qualquer subdomínio ou ferramenta embutida (como Genesys/CTI)
   matches: ['<all_urls>'],
-  allFrames: true,
+  allFrames: true, // Força a entrada em cada frame da Docusign e Salesforce
   
   main() {
-    // Captura o domínio atual para saber onde o script está rodando
-    const hostAtual = window.location.hostname;
-
-    // Filtro de segurança: Só executa se estiver nos alvos de trabalho legítimos
-    const ehSalesforce = hostAtual.includes("force.com") || hostAtual.includes("salesforce.com");
-    const ehGmail = hostAtual.includes("mail.google.com");
-    
-    // Alvo extra: Verifica se é o frame interno embutido do rascunho de e-mail CTI
-    const ehFrameInjetadoEmail = hostAtual.includes("pure.cloud") || hostAtual.includes("genesys");
-
-    if (!ehSalesforce && !ehGmail && !ehFrameInjetadoEmail) {
-      return; // Ignora abas externas (Ex: YouTube, Google Search etc.)
+    // PROTEÇÃO 1: Se o navegador isolar o Iframe e sumir com a API de Extensão, aborta sem quebrar o script
+    if (typeof browser === 'undefined' || !browser.runtime || !browser.runtime.id) {
+      return;
     }
 
-    console.log(`🚀 [OmniSnap Core] Ativo no Frame: ${window.location.href}`);
+    console.log(`🚀 [OmniSnap Core] Injetado no contexto: ${window.location.href} (Título: ${document.title})`);
 
     let refreshIntervalId: any = null;
     let tempoRestanteSegundos = 0;
 
-    // Escuta o mouse na página para acumular com CTRL
+
+    // 🌟 NOVA VALIDAÇÃO DO DOCUSIGN (Alvo Dinâmico):
+    // Verifica se a URL atual contém a estrutura base do relatório que você mencionou
+    const urlAtual = window.location.href;
+    if (urlAtual.includes("docusign.net/admin/DataReport.aspx") && urlAtual.includes("rpt=EnvelopeID")) {
+      console.log("🎯 [OmniSnap] Página de Relatório DocuSign Detectada! Ativando aba flutuante.");
+      inicializarSidebarExpansivel();
+    }
+
+    // --- Mantenha o resto de todos os seus ouvintes e funções idênticos abaixo ---
     window.addEventListener('mouseup', (event) => {
       verificarEAcumularSelecao(event);
     });
 
     const atualizarBadgeNavegador = (texto: string) => {
       try {
-        browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto });
-      } catch (e) {
-        console.error("Erro ao atualizar o Badge:", e);
-      }
+        if (window === window.top && typeof browser !== 'undefined' && browser.runtime && browser.runtime.id) {
+          browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto });
+        }
+      } catch (e) {}
     };
+
+    // Escuta o mouse na página para acumular seleções com CTRL
+    window.addEventListener('mouseup', (event) => {
+      verificarEAcumularSelecao(event);
+    });
+
+    // const atualizarBadgeNavegador = (texto: string) => {
+    //   try {
+    //     // CORREÇÃO SEGURANÇA: Só envia a mensagem se for o frame principal de topo
+    //     if (window === window.top && typeof browser !== 'undefined' && browser.runtime && browser.runtime.id) {
+    //       browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto });
+    //     }
+    //   } catch (e) {}
+    // };
 
     const iniciarAutoRefresh = (minutos: number) => {
       if (refreshIntervalId) clearInterval(refreshIntervalId);
@@ -66,91 +80,109 @@ export default defineContentScript({
       const seg = totalSegundos % 60;
       const segundosFormatados = seg.toString().padStart(2, '0');
       const textoBadge = `${min}:${segundosFormatados}`;
-      browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto: textoBadge, segundosRestantes: totalSegundos });
+      try {
+        // CORREÇÃO SEGURANÇA: Bloqueia os sub-iframes de poluir o cronômetro central
+        if (window === window.top) {
+          browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto: textoBadge, segundosRestantes: totalSegundos });
+        }
+      } catch (e) {}
     };
 
     const checarTimerSalvo = async () => {
       try {
+        // CORREÇÃO COMPORTAMENTO: Apenas a aba mãe do topo calcula e aciona o refresh
+        if (window !== window.top) {
+          return;
+        }
+
         const urlLimpo = window.location.hostname;
         const resultado = await browser.storage.local.get(urlLimpo);
         if (resultado[urlLimpo]) {
+          console.log(`⏱️ [OmniSnap] Ativando Auto-Refresh persistente para: ${urlLimpo}`);
           iniciarAutoRefresh(resultado[urlLimpo] as number);
         }
       } catch (e) {
         console.error("Erro ao checar Auto-Refresh persistente:", e);
       }
     };
-
     checarTimerSalvo();
 
+    // Ouvinte nativo direto de teclado (Fura qualquer bloqueio de mensagens assíncronas!)
     window.addEventListener('keydown', (event) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') {
+      const tecla = event.key.toLowerCase();
+      
+      // Captura o atalho Ctrl + Shift + Y ou Ctrl + Shift + F em qualquer frame que o rascunho estiver focado
+      if (event.ctrlKey && event.shiftKey && (tecla === 'y' || tecla === 'f')) {
         event.preventDefault();
-        openCustomSearch();
+        event.stopPropagation();
+        
+        console.log("🔍 [OmniSnap Local Trigger] Invocando Finder no frame atual.");
+        openCustomSearch(); // Abre direto na tela usando injeção de DOM plano
       }
-      // ATALHO 2: Novo atalho para limpar o acumulador e remover as marcações roxas da tela
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'x') {
-        event.preventDefault(); // Impede qualquer comportamento estranho do navegador
-        
-        limparAcumulador(); // Executa a limpeza da memória e dos destaques visuais
-        
-        // Atualiza o Badge do ícone da extensão para sumir com o número antigo
-        atualizarBadgeNavegador(""); 
-        
-        console.log("🧹 [OmniSnap] Acumulador limpo via atalho (Ctrl+Shift+X)");
+      
+      if (event.ctrlKey && event.shiftKey && tecla === 'x') {
+        event.preventDefault();
+        limparAcumulador();
+        if (window === window.top) {
+          atualizarBadgeNavegador("");
+        }
       }
     });
 
-    // --- INICIALIZAÇÃO DOS MONITORES ---
-    if (ehGmail) {
+    // Inicializa os interceptadores com base na assinatura da página
+    const hostAtual = window.location.hostname;
+    if (hostAtual.includes("mail.google.com")) {
       initGmailMonitor();
     } else {
-      // Monitora tanto a tela cheia do Salesforce quanto os iframes do console/CTI de e-mail
+      // Salesforce, Dashboards e Gerenciadores de Rascunho caem aqui de forma contínua
       iniciarMonitorSalesforce();
     }
 
-    // Interceptador de digitação universal seguro
+    // Interceptador de digitação universal seguro para os Snippets
     window.addEventListener('keyup', (e) => {
       const target = e.target as HTMLElement;
-      if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+      if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)) {
         handleSnippets(e);
       }
     });
 
-    // Ouvinte de mensagens do Popup
-    browser.runtime.onMessage.addListener((message) => {
-      if (message.action === "TOTAL_ACUMULADO") {
-        const total = obtenerQuantidadeItens();
-        return Promise.resolve({ dados: total });
-      }
-      if (message.action === "PEGAR_TEXTOS_ACUMULADOS") {
-        const todosTextos = obtenerTextosJuntos();
-        return Promise.resolve({ dados: todosTextos });
-      }
-      if (message.action === "LIMPAR_ACUMULADOR") {
-        limparAcumulador();
-        return Promise.resolve({ dados: "Limpo!" });
-      }
-      if (message.action === "RESTART_TIMER") {
-        iniciarAutoRefresh(message.minutos);
-        return Promise.resolve({ dados: "Timer iniciado!" });
-      }
-      if (message.action === "STOP_TIMER") {
-        if (refreshIntervalId) {
-          clearInterval(refreshIntervalId);
-          refreshIntervalId = null;
+    // Ouvinte de mensagens de segurança do Popup (Apenas se o barramento estiver disponível)
+    try {
+      browser.runtime.onMessage.addListener((message) => {
+        if (message.action === "ABRIR_BUSCA_ATALHO") {
+          openCustomSearch();
+          return Promise.resolve({ dados: "Buscador disparado!" });
         }
-        atualizarBadgeNavegador("");
-        return Promise.resolve({ dados: "Timer parado!" });
-      }
-      if (message.action === "PEGAR_LINKS") {
-        const links = getPageLinks();
-        return Promise.resolve({ dados: links });
-      }
-      if (message.action === "MUDAR_COR") {
-        changeBackgroundColor('yellow');
-        return Promise.resolve({ dados: "Cor alterada para amarelo!" });
-      }
-    });
+        if (message.action === "TOTAL_ACUMULADO") {
+          return Promise.resolve({ dados: obtenerQuantidadeItens() });
+        }
+        if (message.action === "PEGAR_TEXTOS_ACUMULADOS") {
+          return Promise.resolve({ dados: obtenerTextosJuntos() });
+        }
+        if (message.action === "LIMPAR_ACUMULADOR") {
+          limparAcumulador();
+          return Promise.resolve({ dados: "Limpo!" });
+        }
+        if (message.action === "RESTART_TIMER") {
+          iniciarAutoRefresh(message.minutos);
+          return Promise.resolve({ dados: "Timer iniciado!" });
+        }
+        if (message.action === "STOP_TIMER") {
+          if (refreshIntervalId) {
+            clearInterval(refreshIntervalId);
+            refreshIntervalId = null;
+          }
+          atualizarBadgeNavegador("");
+          return Promise.resolve({ dados: "Timer parado!" });
+        }
+        if (message.action === "PEGAR_LINKS") {
+          return Promise.resolve({ dados: getPageLinks() });
+        }
+        if (message.action === "MUDAR_COR") {
+          changeBackgroundColor('yellow');
+          return Promise.resolve({ dados: "Cor alterada!" });
+        }
+      });
+    } catch (err) {}
   },
 });

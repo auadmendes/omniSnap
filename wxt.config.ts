@@ -38,8 +38,8 @@ export default defineConfig({
 
   // Informações do manifesto ficam agrupadas aqui dentro
   manifest: {
-    name: 'OmniSnap',
-    version: '1.0.0',
+    name: 'OmniSnap - DEV',
+    version: '1.0.1',
     description: 'Sua extensão moderna de produtividade OmniSnap',
     permissions: ['storage', 'activeTab', 'clipboardWrite'],
 
