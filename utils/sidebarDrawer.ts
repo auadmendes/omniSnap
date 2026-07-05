@@ -42,7 +42,7 @@ export function inicializarSidebarExpansivel() {
     .omnisnap-painel-conteudo {
       pointer-events: auto;
       width: 0;
-      height: 520px;
+      height: 580px;
       background: #ffffff;
       box-shadow: -4px 4px 15px rgba(0,0,0,0.15);
       border-left: 1px solid #e2e8f0;
@@ -90,6 +90,10 @@ export function inicializarSidebarExpansivel() {
       margin-bottom: 12px;
       border-radius: 0 4px 4px 0;
     }
+    .omnisnap-info-box.destaque {
+      border-left: 3px solid #16a34a;
+      background: #f0fdf4;
+    }
     .omnisnap-label {
       font-weight: 600;
       font-size: 11px;
@@ -107,7 +111,7 @@ export function inicializarSidebarExpansivel() {
     <div class="omnisnap-aba-gatilho">📄 OMNISNAP</div>
     <div class="omnisnap-painel-conteudo">
       <div class="omnisnap-header">
-        <h3>OmniSnap - Coleta de Dados</h3>
+        <h3>OmniSnap - Data Collection</h3>
         <button class="omnisnap-btn-fechar">&times;</button>
       </div>
       <div class="omnisnap-corpo">
@@ -140,53 +144,107 @@ function coletarDadosDaPaginaDocuSign() {
   if (!containerDados) return;
 
   try {
-    // ----------------------------------------------------
-    // 🕵️‍♂️ MAPEAMENTO DA TABELA "ENVELOPE" (HTML Dinâmico)
-    // ----------------------------------------------------
     const tabelaEnvelope = document.getElementById("Envelope") as HTMLTableElement;
     
+    let senderIPAddress = "N/A";
+    let declineReason = "N/A";
+    let senderLocation = "N/A";
     let envelopeType = "N/A";
     let integratorKey = "N/A";
     let isEnvelopeIdStampingEnabled = "N/A";
     let templateDescription = "N/A";
+    
+    // Variáveis dinâmicas de documentos
+    let tamanhoTotalBytes = 0;
+    let quantidadeDocumentos = 0;
 
+    // 1. MAPEAMENTO SEGURO DA TABELA ENVELOPE
     if (tabelaEnvelope) {
       const cabecalhos = Array.from(tabelaEnvelope.rows[0].cells).map(cell => cell.textContent?.trim());
       const valores = Array.from(tabelaEnvelope.rows[1].cells).map(cell => cell.textContent?.trim());
 
-      // Função auxiliar para mapear coluna por nome exato
       const buscarValorPorColuna = (nomeColuna: string) => {
         const index = cabecalhos.indexOf(nomeColuna);
         return index !== -1 && valores[index] ? valores[index] : "N/A";
       };
 
+      senderIPAddress = buscarValorPorColuna("SenderIPAddress");
+      declineReason = buscarValorPorColuna("DeclineReason");
+      senderLocation = buscarValorPorColuna("ACHolderLocation");
       envelopeType = buscarValorPorColuna("EnvelopeType");
       integratorKey = buscarValorPorColuna("IntegratorKey");
       isEnvelopeIdStampingEnabled = buscarValorPorColuna("IsEnvelopeIDStampingEnabled");
       templateDescription = buscarValorPorColuna("TemplateDescription");
     }
 
-    // ----------------------------------------------------
-    // 🕵️‍♂️ MAPEAMENTO DA SEÇÃO DE TEXTO "SETTINGS" (Configurações Internas)
-    // ----------------------------------------------------
+    // 2. 🔥 NOVA CONTAGEM REAL DE DOCUMENTOS (Varre a tabela de registros de documentos)
+    // Procuramos qualquer tabela na página que possua a estrutura ou cabeçalho de DocumentId
+    const todasAsTabelas = Array.from(document.getElementsByTagName("table"));
+    const tabelaDocsReg = todasAsTabelas.find(t => {
+      return t.rows.length > 0 && t.rows[0].cells[0]?.textContent?.trim() === "DocumentId";
+    });
+
+    if (tabelaDocsReg) {
+      // Conta quantas linhas de dados existem (descontando o cabeçalho)
+      quantidadeDocumentos = tabelaDocsReg.rows.length - 1;
+    }
+
+    // 3. 🔥 SOMA DINÂMICA DO SIZE EM BYTES (Varre as tabelas de sub-documentos)
+    // Coleta todas as tabelas que contêm as informações de tamanho em Bytes por arquivo
+    todasAsTabelas.forEach(tabela => {
+      const idTabela = tabela.id || "";
+      
+      // Filtra as tabelas que descrevem os metadados físicos do arquivo (id inicial contendo "Document:")
+      if (idTabela.startsWith("Document:") || idTabela.includes("Latest PDF") || idTabela.includes("Original PDF")) {
+        const cabecalhosSub = Array.from(tabela.rows[0].cells).map(c => c.textContent?.trim());
+        const indexSize = cabecalhosSub.indexOf("Size");
+
+        // Se houver uma coluna de tamanho e uma linha de valores correspondente
+        if (indexSize !== -1 && tabela.rows.length > 1) {
+          const valorSizeTexto = tabela.rows[1].cells[indexSize]?.textContent?.trim();
+          const valorSizeNumerico = parseInt(valorSizeTexto || "0", 10);
+          
+          if (!isNaN(valorSizeNumerico)) {
+            tamanhoTotalBytes += valorSizeNumerico;
+          }
+        }
+      }
+    });
+
+    // Conversão de Bytes para Megabytes (Bytes / 1024 / 1024)
+    let tamanhoTotalMB = "0.00 MB";
+    if (tamanhoTotalBytes > 0) {
+      const calculoMB = tamanhoTotalBytes / (1024 * 1024);
+      tamanhoTotalMB = `${calculoMB.toFixed(2)} MB (${(tamanhoTotalBytes / 1024).toFixed(0)} KB)`;
+    } else if (tabelaEnvelope) {
+      // Fallback de segurança caso as tabelas de binários não estejam renderizadas na página
+      const idxKB = Array.from(tabelaEnvelope.rows[0].cells).map(c => c.textContent?.trim()).indexOf("TotalContentSizeKb");
+      if (idxKB !== -1 && tabelaEnvelope.rows[1].cells[idxKB]) {
+        const kbSecundario = parseFloat(tabelaEnvelope.rows[1].cells[idxKB].textContent || "0");
+        tamanhoTotalMB = `${(kbSecundario / 1024).toFixed(2)} MB`;
+      }
+    }
+
+    // Se nenhuma tabela de documentos foi encontrada por ID, assume o valor padrão de 1 registro
+    if (quantidadeDocumentos === 0 && tabelaEnvelope) {
+      quantidadeDocumentos = 1;
+    }
+
+    // 4. MAPEAMENTO DA SEÇÃO TEXTUAL "SETTINGS"
     const containerSettings = document.querySelector("#Recipients pre");
     let textSettings = containerSettings ? containerSettings.textContent || "" : "";
 
-    // Funções auxiliares baseadas em Regex para capturar propriedades dentro da tag <pre> ou texto cru
     const extrairDeSettings = (chave: string): string => {
       const regex = new RegExp(`${chave}\\s*=\\s*([^\\n\\r]+)`, "i");
       const match = textSettings.match(regex);
       return match ? match[1].trim() : "N/A";
     };
 
-    // 1. Document Visibility (Se houver chave correspondente ou similar como "DocumentVisibility" no array)
     let documentVisibility = extrairDeSettings("DocumentVisibility");
     if (documentVisibility === "N/A") {
-      // Verificação secundária caso mude o padrão de nomenclatura interna da API
-      documentVisibility = textSettings.toLowerCase().includes("visibility") ? "Ativo/Presente" : "Inativo/Não listado";
+      documentVisibility = textSettings.toLowerCase().includes("visibility") ? "Active" : "Inactive";
     }
 
-    // 2. Expiration / Timeout (Mapeado no DocuSign DB pelo TimeoutAfter ou ExpireAfter da tabela Envelope)
     let expirationDate = "N/A";
     if (tabelaEnvelope) {
       const idxTimeout = Array.from(tabelaEnvelope.rows[0].cells).map(c => c.textContent?.trim()).indexOf("TimeoutAfter");
@@ -195,25 +253,47 @@ function coletarDadosDaPaginaDocuSign() {
       }
     }
 
-    // 3. Template - Verifica se foi gerado via Powerform ou Template ID nativo
     let templateIdInfo = "N/A";
     const celulaEstId = document.querySelector(".estID");
     if (celulaEstId) {
-      templateIdInfo = celulaEstId.textContent?.replace("5", "").trim() || "N/A"; // Captura o texto "Sent from a Powerform"
+      templateIdInfo = celulaEstId.textContent?.replace("5", "").trim() || "N/A";
     } else {
       templateIdInfo = templateDescription !== "N/A" ? templateDescription : "N/A";
     }
 
-    // 4. Template Applied to Document
     let templateApplied = "N/A";
     const regexTemplateApplied = /TemplateApplied\s*=\s*([^\n\r]+)/i;
     const matchApplied = textSettings.match(regexTemplateApplied);
-    templateApplied = matchApplied ? matchApplied[1].trim() : (templateIdInfo !== "N/A" ? "Aplicado via " + templateIdInfo : "Não Detectado");
+    templateApplied = matchApplied ? matchApplied[1].trim() : (templateIdInfo !== "N/A" ? "Applied via " + templateIdInfo : "Not Detected");
 
-    // ----------------------------------------------------
-    // 🌟 RENDERIZAÇÃO DA SIDEBAR EXPANDIDA
-    // ----------------------------------------------------
+    // 5. ATUALIZAÇÃO DO CONTEÚDO VISUAL NO DRAWER
     containerDados.innerHTML = `
+      <div class="omnisnap-info-box destaque">
+        <div class="omnisnap-label">Number of Documents</div>
+        <div class="omnisnap-valor" style="font-size: 16px; font-weight: bold; color: #16a34a;">
+          ${quantidadeDocumentos} Document(s) inside Envelope
+        </div>
+      </div>
+
+      <div class="omnisnap-info-box destaque">
+        <div class="omnisnap-label">Total Size (Megabytes)</div>
+        <div class="omnisnap-valor" style="font-size: 15px; font-weight: bold; color: #16a34a;">
+          ${tamanhoTotalMB}
+        </div>
+      </div>
+
+      <div class="omnisnap-info-box">
+        <div class="omnisnap-label">Sender IP Address</div>
+        <div class="omnisnap-valor"><code>${senderIPAddress}</code> (${senderLocation})</div>
+      </div>
+
+      <div class="omnisnap-info-box">
+        <div class="omnisnap-label">Decline Reason</div>
+        <div class="omnisnap-valor" style="color: #b91c1c; font-weight: 500;">
+          ${declineReason !== "N/A" && declineReason.trim() !== "" ? declineReason : "No decline reason recorded"}
+        </div>
+      </div>
+
       <div class="omnisnap-info-box">
         <div class="omnisnap-label">Envelope Type</div>
         <div class="omnisnap-valor"><b>${envelopeType}</b></div>
@@ -242,7 +322,7 @@ function coletarDadosDaPaginaDocuSign() {
       </div>
 
       <div class="omnisnap-info-box">
-        <div class="omnisnap-label">Template (Nome/ID)</div>
+        <div class="omnisnap-label">Template (Name/ID)</div>
         <div class="omnisnap-valor">${templateIdInfo}</div>
       </div>
 

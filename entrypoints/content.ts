@@ -6,6 +6,8 @@ import { openCustomSearch } from '@/utils/finderHandler';
 import { iniciarMonitorSalesforce } from '@/utils/salesforce';
 import { verificarEAcumularSelecao, limparAcumulador, obtenerQuantidadeItens, obtenerTextosJuntos } from '@/utils/selectionAccumulator';
 import { inicializarSidebarExpansivel } from '@/utils/sidebarDrawer';
+import { inicializarTabFinder } from '@/utils/tabfinder';
+import { inicializarEnvelopeTemplates } from '@/utils/envelopeTemplates';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -22,16 +24,37 @@ export default defineContentScript({
     let refreshIntervalId: any = null;
     let tempoRestanteSegundos = 0;
 
-
-    // 🌟 NOVA VALIDAÇÃO DO DOCUSIGN (Alvo Dinâmico):
-    // Verifica se a URL atual contém a estrutura base do relatório que você mencionou
+    // 🌟 VALIDAÇÃO DO DOCUSIGN - RELATÓRIOS (Execução síncrona na carga inicial):
     const urlAtual = window.location.href;
     if (urlAtual.includes("docusign.net/admin/DataReport.aspx") && urlAtual.includes("rpt=EnvelopeID")) {
       console.log("🎯 [OmniSnap] Página de Relatório DocuSign Detectada! Ativando aba flutuante.");
       inicializarSidebarExpansivel();
     }
 
-    // --- Mantenha o resto de todos os seus ouvintes e funções idênticos abaixo ---
+    // 🌟 MONITOR DE SPA (Single Page Application):
+    // Vigia o corpo da página continuamente para capturar a transição assíncrona do React do DocuSign
+
+    const observerSPA = new MutationObserver(() => {
+      const urlDinamica = window.location.href;
+      
+      // 🌟 CORREÇÃO: Usamos uma Expressão Regular para aceitar tanto apps.docusign.com quanto apps-d.docusign.com
+      if (/apps(-d)?\.docusign\.com\/send/.test(urlDinamica)) {
+        const targetInput = document.querySelector('input[data-qa="prepare-subject"]');
+        
+        if (targetInput && !document.getElementById('omnisnap-template-toolbar')) {
+          console.log("📝 [OmniSnap SPA Trigger] Inputs localizados no DocuSign! Injetando barra de macros.");
+          inicializarEnvelopeTemplates();
+        }
+      }
+    });
+
+    // Ativa o observador no body cobrindo toda a árvore de elementos renderizados
+    observerSPA.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Escuta o mouse na página para acumular seleções com CTRL
     window.addEventListener('mouseup', (event) => {
       verificarEAcumularSelecao(event);
     });
@@ -43,20 +66,6 @@ export default defineContentScript({
         }
       } catch (e) {}
     };
-
-    // Escuta o mouse na página para acumular seleções com CTRL
-    window.addEventListener('mouseup', (event) => {
-      verificarEAcumularSelecao(event);
-    });
-
-    // const atualizarBadgeNavegador = (texto: string) => {
-    //   try {
-    //     // CORREÇÃO SEGURANÇA: Só envia a mensagem se for o frame principal de topo
-    //     if (window === window.top && typeof browser !== 'undefined' && browser.runtime && browser.runtime.id) {
-    //       browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto });
-    //     }
-    //   } catch (e) {}
-    // };
 
     const iniciarAutoRefresh = (minutos: number) => {
       if (refreshIntervalId) clearInterval(refreshIntervalId);
@@ -105,6 +114,7 @@ export default defineContentScript({
         console.error("Erro ao checar Auto-Refresh persistente:", e);
       }
     };
+
     checarTimerSalvo();
 
     // Ouvinte nativo direto de teclado (Fura qualquer bloqueio de mensagens assíncronas!)
@@ -126,6 +136,15 @@ export default defineContentScript({
         if (window === window.top) {
           atualizarBadgeNavegador("");
         }
+      }
+
+      // 🌟 ATALHO DA BARRA SEPARADA DE BUSCA: Ctrl + Alt + F
+      if (event.ctrlKey && event.altKey && tecla === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        console.log("🔍 [OmniSnap] Ativando Buscador de Abas Separado (TabFinder)");
+        inicializarTabFinder();
       }
     });
 

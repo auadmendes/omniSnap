@@ -42,6 +42,12 @@ export default defineConfig({
     version: '1.0.1',
     description: 'Sua extensão moderna de produtividade OmniSnap',
     permissions: ['storage', 'activeTab', 'clipboardWrite'],
+    host_permissions: [
+      '*://*.docusign.net/*',
+      '*://*.docusign.com/*',
+      '*://*.force.com/*',
+      '*://*.salesforce.com/*'
+    ],
 
     // ADICIONADO: Configuração nativa de comandos globais do navegador
     commands: {

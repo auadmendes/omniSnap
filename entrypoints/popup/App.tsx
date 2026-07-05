@@ -6,6 +6,9 @@ function App() {
   const [tempoInput, setTempoInput] = useState<string>("");
   const [timerAtivo, setTimerAtivo] = useState<number | null>(null);
   const [itensColetados, setItensColetados] = useState<number>(0);
+  
+  // 🌟 NOVO ESTADO: Controla se a seção de atalhos de teclado está aberta ou fechada
+  const [mostrarAtalhos, setMostrarAtalhos] = useState<boolean>(false);
 
   // Função isolada para buscar o total atualizado da página de forma confiável
   const sincronizarQuantidadeColetada = async (tabId: number) => {
@@ -199,7 +202,6 @@ function App() {
             💡 Segure a tecla <kbd className="bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded-sm border border-slate-700 text-[10px] font-mono shadow-xs">Ctrl</kbd> na página enquanto seleciona os blocks com o mouse para acumulá-los.
           </div>
 
-          {/* MELHORIA: O botão agora destrava visualmente na mesma hora se houver mais que 0 itens */}
           <button 
             className={`w-full p-2.5 border rounded-xl flex items-center gap-3 text-left transition-all cursor-pointer group ${
               itensColetados > 0 
@@ -217,7 +219,7 @@ function App() {
 
           {itensColetados > 0 && (
             <button 
-              className="w-full mt-1 py-1.5 bg-transparent border border-dashed border-red-500/30 hover:border-red-500 text-[11px] font-semibold text-red-400 hover:bg-red-500/5 **update-fade** rounded-lg transition-all cursor-pointer" 
+              className="w-full mt-1 py-1.5 bg-transparent border border-dashed border-red-500/30 hover:border-red-500 text-[11px] font-semibold text-red-400 hover:bg-red-500/5 rounded-lg transition-all cursor-pointer" 
               onClick={() => gerenciarAcumulador("LIMPAR_ACUMULADOR")}
             >
               Limpar Lista e Highlights
@@ -241,6 +243,100 @@ function App() {
             </div>
           </button>
         </div>
+      </section>
+
+      {/* 🌟 NOVA SEÇÃO: Atalhos de Teclado Ativos (Hide/Expand Accordion) */}
+      <section className="flex flex-col gap-1 bg-slate-800/30 border border-slate-800/80 rounded-xl overflow-hidden transition-all">
+        {/* Botão de Gatilho / Cabeçalho do Accordion */}
+        <button 
+          type="button"
+          onClick={() => setMostrarAtalhos(!mostrarAtalhos)}
+          className="w-full px-3 py-2 flex items-center justify-between text-left text-xs font-semibold text-slate-300 hover:text-slate-100 hover:bg-slate-800/30 transition-colors cursor-pointer outline-hidden select-none"
+        >
+          <div className="flex items-center gap-2">
+            <span>⌨️</span> Atalhos de Teclado Ativos
+          </div>
+          {/* Seta animada: Gira 90 graus quando o estado 'mostrarAtalhos' for verdadeiro */}
+          <span className={`text-[10px] text-slate-500 transform transition-transform duration-200 ${mostrarAtalhos ? 'rotate-90 text-indigo-400' : ''}`}>
+            ▶
+          </span>
+        </button>
+
+        {/* Corpo do Accordion (Lógica de Hide/Show Condicional) */}
+        {mostrarAtalhos && (
+          <div className="px-3 pb-3 pt-1 border-t border-slate-800/50 flex flex-col gap-2 bg-slate-950/20 max-height-[200px] overflow-y-auto animate-in fade-in-0 duration-200">
+            
+          {/* 📌 1  INÍCIO DO BLOCO DE ATALHO (Nome + Atalho em cima / Descrição embaixo) */}
+          <div className="flex flex-col gap-1 py-2 border-b border-slate-800/40 last:border-none">
+            {/* Linha Superior: Nome do Recurso e Atalhos empurrados para a extremidade direita */}
+            <div className="flex items-center justify-between w-full">
+              <span className="text-slate-300 font-medium text-[11px]">Super finder</span>
+              <div className="flex gap-0.5">
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Ctrl</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Shift</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">F</kbd>
+              </div>
+            </div>
+            
+            {/* Linha Inferior: Texto explicativo ocupando toda a largura abaixo */}
+            <span className="text-[10px] text-slate-500 whitespace-pre-wrap">
+              Searches for multiple terms in the current page
+            </span>
+          </div>
+          {/* 📌 FIM DO BLOCO DE EXEMPLO */}
+
+          {/* 📌 2  Atalho copiar multiplas palavras */}
+          <div className="flex flex-col gap-1 py-2 border-b border-slate-800/40 last:border-none">
+            {/* Linha Superior: Nome do Recurso e Atalhos empurrados para a extremidade direita */}
+            <div className="flex items-center justify-between w-full">
+              <span className="text-slate-300 font-medium text-[11px]">Super clipboard</span>
+              <div className="flex gap-0.5">
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Ctrl</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Double click/Select</kbd>
+              </div>
+            </div>
+            
+            {/* Linha Inferior: Texto explicativo ocupando toda a largura abaixo */}
+            <span className="text-[10px] text-slate-500 whitespace-pre-wrap">
+              Press Ctrl + click or select a word to accumulate it in the clipboard list. 
+            </span>
+          </div>
+          {/* 📌 FIM DO BLOCO DE EXEMPLO copiar multiplas palavras */}
+
+          {/* 📌 3 limpar coletados */}
+          <div className="flex flex-col gap-1 py-2 border-b border-slate-800/40 last:border-none">
+            {/* Linha Superior: Nome do Recurso e Atalhos empurrados para a extremidade direita */}
+            <div className="flex items-center justify-between w-full">
+              <span className="text-slate-300 font-medium text-[11px]">Clear collected words</span>
+              <div className="flex gap-0.5">
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Ctrl</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Shift</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">X</kbd>
+              </div>
+            </div>
+            
+            {/* Linha Inferior: Texto explicativo ocupando toda a largura abaixo */}
+            <span className="text-[10px] text-slate-500 whitespace-pre-wrap">
+              Press Ctrl + Shift + x to clear the collected.
+            </span>
+          </div>
+          {/* 📌 FIM DO BLOCO DE EXEMPLO copiar multiplas palavras */}
+
+
+
+            {/* Atalho 3: Limpar Lista do Acumulador */}
+            {/* <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-[11px] py-1 border-b border-slate-800/40 last:border-none">
+              <span className="text-slate-400 font-medium">Limpar Coleta</span>
+              <span className="text-[10px] text-slate-500 truncate">Zera a lista e os destaques</span>
+              <div className="flex gap-0.5 ml-auto">
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Ctrl</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">Shift</kbd>
+                <kbd className="bg-slate-800 text-slate-200 px-1 py-0.5 rounded-[2px] border border-slate-700 text-[9px] font-mono">X</kbd>
+              </div>
+            </div> */}
+
+          </div>
+        )}
       </section>
 
       {/* Seção: Painel de Controle */}
