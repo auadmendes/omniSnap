@@ -11,10 +11,10 @@ import { inicializarEnvelopeTemplates } from '@/utils/envelopeTemplates';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
-  allFrames: true, // Força a entrada em cada frame da Docusign e Salesforce
+  allFrames: true, // 🌟 ESSENCIAL: força o WXT a injetar o script dentro de cada sub-iframe/CKEditor do Salesforce
   
   main() {
-    // PROTEÇÃO 1: Se o navegador isolar o Iframe e sumir com a API de Extensão, aborta sem quebrar o script
+    // PROTEÇÃO: Se o navegador isolar o Iframe e sumir com a API de Extensão, aborta sem quebrar o script
     if (typeof browser === 'undefined' || !browser.runtime || !browser.runtime.id) {
       return;
     }
@@ -33,11 +33,10 @@ export default defineContentScript({
 
     // 🌟 MONITOR DE SPA (Single Page Application):
     // Vigia o corpo da página continuamente para capturar a transição assíncrona do React do DocuSign
-
     const observerSPA = new MutationObserver(() => {
       const urlDinamica = window.location.href;
       
-      // 🌟 CORREÇÃO: Usamos uma Expressão Regular para aceitar tanto apps.docusign.com quanto apps-d.docusign.com
+      // Expressão Regular para aceitar tanto apps.docusign.com quanto apps-d.docusign.com
       if (/apps(-d)?\.docusign\.com\/send/.test(urlDinamica)) {
         const targetInput = document.querySelector('input[data-qa="prepare-subject"]');
         
@@ -90,7 +89,7 @@ export default defineContentScript({
       const segundosFormatados = seg.toString().padStart(2, '0');
       const textoBadge = `${min}:${segundosFormatados}`;
       try {
-        // CORREÇÃO SEGURANÇA: Bloqueia os sub-iframes de poluir o cronômetro central
+        // Bloqueia os sub-iframes de poluir o cronômetro central
         if (window === window.top) {
           browser.runtime.sendMessage({ action: "UPDATE_BADGE", texto: textoBadge, segundosRestantes: totalSegundos });
         }
@@ -99,7 +98,6 @@ export default defineContentScript({
 
     const checarTimerSalvo = async () => {
       try {
-        // CORREÇÃO COMPORTAMENTO: Apenas a aba mãe do topo calcula e aciona o refresh
         if (window !== window.top) {
           return;
         }
@@ -121,7 +119,7 @@ export default defineContentScript({
     window.addEventListener('keydown', (event) => {
       const tecla = event.key.toLowerCase();
       
-      // Captura o atalho Ctrl + Shift + Y ou Ctrl + Shift + F em qualquer frame que o rascunho estiver focado
+      // Captura o atalho Ctrl + Shift + Y ou Ctrl + Shift + F em qualquer frame focado
       if (event.ctrlKey && event.shiftKey && (tecla === 'y' || tecla === 'f')) {
         event.preventDefault();
         event.stopPropagation();
@@ -138,7 +136,7 @@ export default defineContentScript({
         }
       }
 
-      // 🌟 ATALHO DA BARRA SEPARADA DE BUSCA: Ctrl + Alt + F
+      // ATALHO DA BARRA SEPARADA DE BUSCA: Ctrl + Alt + F
       if (event.ctrlKey && event.altKey && tecla === 'f') {
         event.preventDefault();
         event.stopPropagation();
@@ -148,16 +146,21 @@ export default defineContentScript({
       }
     });
 
-    // Inicializa os interceptadores com base na assinatura da página
+    // 🌟 INICIALIZAÇÃO AGRESSIVA DE INJECTS POR FRAME:
     const hostAtual = window.location.hostname;
+    
     if (hostAtual.includes("mail.google.com")) {
       initGmailMonitor();
-    } else {
-      // Salesforce, Dashboards e Gerenciadores de Rascunho caem aqui de forma contínua
+    }
+
+    // 🚀 LIÇÃO DA EXTENSÃO VELHA: Força o monitor do Salesforce a rodar em qualquer escopo
+    // ou sub-janela aninhada da Service Console que pertença aos domínios force/salesforce
+    if (hostAtual.includes("force.com") || hostAtual.includes("salesforce.com")) {
+      console.log(`📡 [OmniSnap Engine] Inicializando monitor contínuo no frame: ${window.location.href}`);
       iniciarMonitorSalesforce();
     }
 
-    // Interceptador de digitação universal seguro para os Snippets
+    // Interceptador de digitação universal seguro para os Snippets normais
     window.addEventListener('keyup', (e) => {
       const target = e.target as HTMLElement;
       if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)) {
@@ -168,6 +171,12 @@ export default defineContentScript({
     // Ouvinte de mensagens de segurança do Popup (Apenas se o barramento estiver disponível)
     try {
       browser.runtime.onMessage.addListener((message) => {
+
+        if (message.action === "BUSCAR_SNIPPETS_ATIVOS") {
+          return browser.storage.local.get("omnisnap_snippets").then((data) => {
+            return { snippets: data.omnisnap_snippets || [] };
+          });
+        }
         if (message.action === "ABRIR_BUSCA_ATALHO") {
           openCustomSearch();
           return Promise.resolve({ dados: "Buscador disparado!" });
